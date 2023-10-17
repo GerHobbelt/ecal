@@ -31,6 +31,7 @@
 #include "ecal_def.h"
 #include "ecal_globals.h"
 #include "ecal_registration_provider.h"
+#include "ecal_descgate.h"
 
 #include "io/udp_configurations.h"
 #include "io/snd_sample.h"
@@ -106,14 +107,12 @@ namespace eCAL
       std::cout << "Network monitoring is disabled" << std::endl;
     }
 
-#ifndef ECAL_LAYER_ICEORYX
     if (m_use_shm_monitoring)
     {
       std::cout << "Shared memory monitoring is enabled (domain: " << Config::Experimental::GetShmMonitoringDomain() << " - queue size: " << Config::Experimental::GetShmMonitoringQueueSize() << ")" << std::endl;
       m_memfile_broadcast.Create(Config::Experimental::GetShmMonitoringDomain(), Config::Experimental::GetShmMonitoringQueueSize());
       m_memfile_broadcast_writer.Bind(&m_memfile_broadcast);
     }
-#endif
 
     m_reg_snd_thread.Start(Config::GetRegistrationRefreshMs(), std::bind(&CRegistrationProvider::RegisterSendThread, this));
 
@@ -126,13 +125,11 @@ namespace eCAL
 
     m_reg_snd_thread.Stop();
 
-#ifndef ECAL_LAYER_ICEORYX
     if(m_use_shm_monitoring)
     {
       m_memfile_broadcast_writer.Unbind();
       m_memfile_broadcast.Destroy();
     }
-#endif
 
     m_created = false;
   }
@@ -148,9 +145,7 @@ namespace eCAL
     {
       RegisterProcess();
       RegisterSample(topic_name_, ecal_sample_);
-#ifndef ECAL_LAYER_ICEORYX
       SendSampleList(false);
-#endif
     }
 
     return(true);
@@ -183,9 +178,7 @@ namespace eCAL
     {
       RegisterProcess();
       RegisterSample(service_name_, ecal_sample_);
-#ifndef ECAL_LAYER_ICEORYX
       SendSampleList(false);
-#endif
     }
 
     return(true);
@@ -218,9 +211,7 @@ namespace eCAL
     {
       RegisterProcess();
       RegisterSample(client_name_, ecal_sample_);
-#ifndef ECAL_LAYER_ICEORYX
       SendSampleList(false);
-#endif
     }
 
     return(true);
@@ -320,7 +311,18 @@ namespace eCAL
     std::lock_guard<std::mutex> lock(m_server_map_sync);
     for(SampleMapT::const_iterator iter = m_server_map.begin(); iter != m_server_map.end(); ++iter)
     {
-      // register sample
+      //////////////////////////////////////////////
+      // update description
+      //////////////////////////////////////////////
+      const auto& ecal_sample_service = iter->second.service();
+      for (const auto& method : ecal_sample_service.methods())
+      {
+        ApplyServiceToDescGate(ecal_sample_service.sname(), method.mname(), method.req_type(), method.req_desc(), method.resp_type(), method.resp_desc());
+      }
+
+      //////////////////////////////////////////////
+      // send sample to registration layer
+      //////////////////////////////////////////////
       return_value &= RegisterSample(iter->second.service().sname(), iter->second);
     }
 
@@ -352,6 +354,19 @@ namespace eCAL
     std::lock_guard<std::mutex> lock(m_topics_map_sync);
     for(SampleMapT::const_iterator iter = m_topics_map.begin(); iter != m_topics_map.end(); ++iter)
     {
+      //////////////////////////////////////////////
+      // update description
+      //////////////////////////////////////////////
+      // read attributes
+      const std::string topic_name(iter->second.topic().tname());
+      const std::string topic_type(iter->second.topic().ttype());
+      const std::string topic_desc(iter->second.topic().tdesc());
+      const bool        topic_is_a_publisher(iter->second.cmd_type() == eCAL::pb::eCmdType::bct_reg_publisher);
+      ApplyTopicToDescGate(topic_name, topic_type, topic_desc, topic_is_a_publisher);
+
+      //////////////////////////////////////////////
+      // send sample to registration layer
+      //////////////////////////////////////////////
       return_value &= RegisterSample(iter->second.topic().tname(), iter->second);
     }
 
@@ -367,18 +382,15 @@ namespace eCAL
     if(m_use_network_monitoring)
       return_value &= (SendSample(&m_reg_snd, sample_name_, sample_, m_multicast_group, -1) != 0);
 
-#ifndef ECAL_LAYER_ICEORYX
     if(m_use_shm_monitoring)
     {
       std::lock_guard<std::mutex> lock(m_sample_list_sync);
       m_sample_list.mutable_samples()->Add()->CopyFrom(sample_);
     }
-#endif
 
     return return_value;
   }
 
-#ifndef ECAL_LAYER_ICEORYX
   bool CRegistrationProvider::SendSampleList(bool reset_sample_list_)
   {
     if(!m_created) return(false);
@@ -399,7 +411,6 @@ namespace eCAL
 
     return return_value;
   }
-#endif
 
   int CRegistrationProvider::RegisterSendThread()
   {
@@ -440,11 +451,54 @@ namespace eCAL
     // register topics
     /*registration_successful &= */RegisterTopics();
 
-#ifndef ECAL_LAYER_ICEORYX
     // write sample list to shared memory
     /*registration_successful &= */SendSampleList();
-#endif
 
     return(0);
   };
+
+  bool CRegistrationProvider::ApplyTopicToDescGate(const std::string& topic_name_
+    , const std::string& topic_type_
+    , const std::string& topic_desc_
+    , bool topic_is_a_publisher_)
+  {
+    if (g_descgate())
+    {
+      // calculate the quality of the current info
+      ::eCAL::CDescGate::QualityFlags quality = ::eCAL::CDescGate::QualityFlags::NO_QUALITY;
+      if (!topic_type_.empty())
+        quality |= ::eCAL::CDescGate::QualityFlags::TYPE_AVAILABLE;
+      if (!topic_desc_.empty())
+        quality |= ::eCAL::CDescGate::QualityFlags::DESCRIPTION_AVAILABLE;
+      if (topic_is_a_publisher_)
+        quality |= ::eCAL::CDescGate::QualityFlags::INFO_COMES_FROM_PRODUCER;
+      quality |= ::eCAL::CDescGate::QualityFlags::INFO_COMES_FROM_THIS_PROCESS;
+      quality |= ::eCAL::CDescGate::QualityFlags::INFO_COMES_FROM_CORRECT_ENTITY;
+      // update description
+      return g_descgate()->ApplyTopicDescription(topic_name_, topic_type_, topic_desc_, quality);
+    }
+    return false;
+  }
+
+  bool CRegistrationProvider::ApplyServiceToDescGate(const std::string& service_name_
+    , const std::string& method_name_
+    , const std::string& req_type_name_
+    , const std::string& req_type_desc_
+    , const std::string& resp_type_name_
+    , const std::string& resp_type_desc_)
+  {
+    if (g_descgate())
+    {
+      // Calculate the quality of the current info
+      ::eCAL::CDescGate::QualityFlags quality = ::eCAL::CDescGate::QualityFlags::NO_QUALITY;
+      if (!(req_type_name_.empty() && resp_type_name_.empty()))
+        quality |= ::eCAL::CDescGate::QualityFlags::TYPE_AVAILABLE;
+      if (!(req_type_desc_.empty() && resp_type_desc_.empty()))
+        quality |= ::eCAL::CDescGate::QualityFlags::DESCRIPTION_AVAILABLE;
+      quality |= ::eCAL::CDescGate::QualityFlags::INFO_COMES_FROM_THIS_PROCESS;
+
+      return g_descgate()->ApplyServiceDescription(service_name_, method_name_, req_type_name_, req_type_desc_, resp_type_name_, resp_type_desc_, quality);
+    }
+    return false;
+  }
 };

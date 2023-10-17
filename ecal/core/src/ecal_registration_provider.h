@@ -31,10 +31,8 @@
 #include "ecal_thread.h"
 #include "io/udp_sender.h"
 
-#ifndef ECAL_LAYER_ICEORYX
 #include "io/ecal_memfile_broadcast.h"
 #include "io/ecal_memfile_broadcast_writer.h"
-#endif
 
 #include <atomic>
 #include <mutex>
@@ -76,12 +74,22 @@ namespace eCAL
     bool RegisterClient();
     bool RegisterTopics();
     bool RegisterSample(const std::string& sample_name_, const eCAL::pb::Sample& sample_);
-
+      
     int RegisterSendThread();
 
-#ifndef ECAL_LAYER_ICEORYX
+    bool ApplyTopicToDescGate(const std::string& topic_name_
+      , const std::string& topic_type_
+      , const std::string& topic_desc_
+      , bool topic_is_a_publisher_);
+
+    bool ApplyServiceToDescGate(const std::string& service_name_
+      , const std::string& method_name_
+      , const std::string& req_type_name_
+      , const std::string& req_type_desc_
+      , const std::string& resp_type_name_
+      , const std::string& resp_type_desc_);
+
     bool SendSampleList(bool reset_sample_list_ = true);
-#endif
 
     static std::atomic<bool>  m_created;
     std::string               m_multicast_group;
@@ -103,14 +111,12 @@ namespace eCAL
     std::mutex                m_client_map_sync;
     SampleMapT                m_client_map;
 
-#ifndef ECAL_LAYER_ICEORYX
     std::mutex                m_sample_list_sync;
     eCAL::pb::SampleList      m_sample_list;
     std::string               m_sample_list_buffer;
 
     eCAL::CMemoryFileBroadcast m_memfile_broadcast;
     eCAL::CMemoryFileBroadcastWriter m_memfile_broadcast_writer;
-#endif
 
     bool m_use_network_monitoring;
     bool m_use_shm_monitoring;

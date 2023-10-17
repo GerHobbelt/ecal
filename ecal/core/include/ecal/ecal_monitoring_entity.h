@@ -18,35 +18,33 @@
 */
 
 /**
- * @brief  shared memory (iceoryx) writer
+ * @file   ecal_monitoring_entity.h
+ * @brief  eCAL monitoring entities
 **/
 
 #pragma once
 
-#include "readwrite/ecal_writer_base.h"
-
-#include <iceoryx_posh/popo/untyped_publisher.hpp>
-
-#include <memory>
-#include <string>
-
 namespace eCAL
 {
-  // ecal shared memory (Iceoryx) writer
-  class CDataWriterSHM : public CDataWriterBase
+  namespace Monitoring
   {
-  public:
-    CDataWriterSHM();
-    ~CDataWriterSHM();
+    namespace Entity
+    {
+      constexpr unsigned int Publisher  = 0x001;
+      constexpr unsigned int Subscriber = 0x002;
+      constexpr unsigned int Server     = 0x004;
+      constexpr unsigned int Client     = 0x008;
+      constexpr unsigned int Process    = 0x010;
+      constexpr unsigned int Host       = 0x020;
 
-    SWriterInfo GetInfo() override;
+      constexpr unsigned int All = Publisher
+        | Subscriber
+        | Server
+        | Client
+        | Process
+        | Host;
 
-    bool Create(const std::string& host_name_, const std::string& topic_name_, const std::string & topic_id_) override;
-    bool Destroy() override;
-
-    bool Write(const SWriterData& data_) override;
-
-  private:
-    std::shared_ptr<iox::popo::UntypedPublisher> m_publisher;
-  };
+      constexpr unsigned int None = 0x000;
+    }
+  }
 }
