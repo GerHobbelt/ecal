@@ -13,6 +13,10 @@ jobs:
   build-windows:
     runs-on: windows-2019
 
+    env:
+      # enable starting Qt GUI Applications
+      QT_QPA_PLATFORM: offscreen
+
     steps:
     - name: Install Qt
       uses: jurplel/install-qt-action@v3
@@ -76,7 +80,7 @@ jobs:
         pip install wheel
 
         echo Installing python requirements
-        pip install -r "%GITHUB_WORKSPACE%\requirements.txt"
+        pip install -r "%GITHUB_WORKSPACE%\doc\requirements.txt"
 
       shell: cmd
 
