@@ -51,7 +51,7 @@ static std::string CreatePayLoad(size_t payload_size_)
   return(s);
 }
 
-TEST(IO, InitializeFinalize)
+TEST(PubSub, InitializeFinalize)
 { 
   // Is eCAL API initialized ?
   EXPECT_EQ(0, eCAL::IsInitialized());
@@ -91,7 +91,7 @@ TEST(IO, InitializeFinalize)
   EXPECT_EQ(1, eCAL::Finalize());
 }
 
-TEST(IO, CreateDestroy)
+TEST(PubSub, CreateDestroy)
 { 
   // initialize eCAL API
   eCAL::Initialize(0, nullptr, "pubsub_test");
@@ -130,7 +130,7 @@ TEST(IO, CreateDestroy)
   eCAL::Finalize();
 }
 
-TEST(IO, TypeDescriptionStatic)
+TEST(PubSub, TypeDescriptionStatic)
 {
   // initialize eCAL API
   eCAL::Initialize(0, nullptr, "pubsub_test");
@@ -153,7 +153,7 @@ TEST(IO, TypeDescriptionStatic)
   eCAL::Finalize();
 }
 
-TEST(IO, TypeDescriptionDynamic)
+TEST(PubSub, TypeDescriptionDynamic)
 {
   // initialize eCAL API
   eCAL::Initialize(0, nullptr, "pubsub_test");
@@ -257,7 +257,7 @@ TEST(IO, TypeDescriptionDynamic)
   eCAL::Finalize();
 }
 
-TEST(IO, SimpleMessage1)
+TEST(PubSub, SimpleMessage1)
 { 
   // default send / receive strings
   std::string send_s = CreatePayLoad(PAYLOAD_SIZE);
@@ -302,7 +302,7 @@ TEST(IO, SimpleMessage1)
   eCAL::Finalize();
 }
 
-TEST(IO, SimpleMessage2)
+TEST(PubSub, SimpleMessage2)
 { 
   // default send / receive strings
   std::string send_s = CreatePayLoad(PAYLOAD_SIZE);
@@ -341,7 +341,7 @@ TEST(IO, SimpleMessage2)
   eCAL::Finalize();
 }
 
-TEST(IO, SimpleMessageCB)
+TEST(PubSub, SimpleMessageCB)
 { 
   // default send string
   std::string send_s = CreatePayLoad(PAYLOAD_SIZE);
@@ -420,7 +420,7 @@ TEST(IO, SimpleMessageCB)
   eCAL::Finalize();
 }
 
-TEST(IO, DynamicSizeCB)
+TEST(PubSub, DynamicSizeCB)
 { 
   // default send string
   std::string send_s = CreatePayLoad(PAYLOAD_SIZE);
@@ -476,7 +476,7 @@ TEST(IO, DynamicSizeCB)
   eCAL::Finalize();
 }
 
-TEST(IO, DynamicCreate)
+TEST(PubSub, DynamicCreate)
 { 
   // default send string
   std::string send_s = CreatePayLoad(PAYLOAD_SIZE);
@@ -568,7 +568,7 @@ TEST(IO, DynamicCreate)
   eCAL::Finalize();
 }
 
-TEST(IO, SimpleMessageCBSHMBufferCount)
+TEST(PubSub, SimpleMessageCBSHMBufferCount)
 {
   // default send string
   std::string send_s = CreatePayLoad(PAYLOAD_SIZE);
@@ -619,7 +619,7 @@ TEST(IO, SimpleMessageCBSHMBufferCount)
   eCAL::Finalize();
 }
 
-TEST(IO, ZeroPayloadMessageInProc)
+TEST(PubSub, ZeroPayloadMessageInProc)
 {
   // default send string
   std::string send_s;
@@ -667,7 +667,7 @@ TEST(IO, ZeroPayloadMessageInProc)
   eCAL::Finalize();
 }
 
-TEST(IO, ZeroPayloadMessageSHM)
+TEST(PubSub, ZeroPayloadMessageSHM)
 {
   // default send string
   std::string send_s;
@@ -715,7 +715,7 @@ TEST(IO, ZeroPayloadMessageSHM)
   eCAL::Finalize();
 }
 
-TEST(IO, ZeroPayloadMessageUDP)
+TEST(PubSub, ZeroPayloadMessageUDP)
 {
   // default send string
   std::string send_s;
@@ -764,7 +764,7 @@ TEST(IO, ZeroPayloadMessageUDP)
 }
 
 
-TEST(IO, MultipleSendsSHM)
+TEST(PubSub, MultipleSendsSHM)
 {
   // default send string
   std::vector<std::string> send_vector{ "this", "is", "a", "", "testtest" };
@@ -817,7 +817,7 @@ TEST(IO, MultipleSendsSHM)
 }
 
 
-TEST(IO, MultipleSendsUDP)
+TEST(PubSub, MultipleSendsUDP)
 {
   // default send string
   std::vector<std::string> send_vector{ "this", "is", "a", "", "testtest" };
@@ -868,13 +868,9 @@ TEST(IO, MultipleSendsUDP)
   // finalize eCAL API
   eCAL::Finalize();
 }
-
-
-
-
 
 #if 0
-TEST(IO, ZeroPayloadMessageTCP)
+TEST(PubSub, ZeroPayloadMessageTCP)
 {
   // default send string
   std::string send_s;
@@ -923,9 +919,7 @@ TEST(IO, ZeroPayloadMessageTCP)
 }
 #endif
 
-#include <ecal/msg/string/publisher.h>
-#include <ecal/msg/string/subscriber.h>
-TEST(IO, DestroyInCallback)
+TEST(PubSub, DestroyInCallback)
 {
   /* Test setup :
    * 2 pair of pub_sub connections ("foo" and "destroy")
@@ -984,6 +978,77 @@ TEST(IO, DestroyInCallback)
 
   pub_foo_t.join();
   pub_destroy_t.join();
+
+  // finalize eCAL API
+  // without destroying any pub / sub
+  eCAL::Finalize();
+}
+
+TEST(IO, SubscriberReconnection)
+{
+  /* Test setup :
+   * publisher runs permanently in a thread
+   * subscriber start reading
+   * subscriber gets out of scope (destruction)
+   * subscriber starts again in a new scope
+   * Test ensures that subscriber is reconnecting and all sync mechanism are working properly again.
+  */
+
+  // initialize eCAL API
+  eCAL::Initialize(0, nullptr, "SubscriberReconnection");
+
+  // enable loop back communication in the same thread
+  eCAL::Util::EnableLoopback(true);
+
+  // start publishing thread
+  std::atomic<bool> stop_publishing(false);
+  eCAL::string::CPublisher<std::string> pub_foo("foo");
+  std::thread pub_foo_t([&pub_foo, &stop_publishing]() {
+    while (!stop_publishing)
+    {
+      pub_foo.Send("Hello World");
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    std::cout << "Stopped publishing" << std::endl;
+  });
+
+  // scope 1
+  {
+    size_t callback_received_count(0);
+
+    eCAL::string::CSubscriber<std::string> sub_foo("foo");
+    auto receive_lambda = [&sub_foo, &callback_received_count](const char* /*topic_*/, const std::string& /*msg*/, long long /*time_*/, long long /*clock_*/, long long /*id_*/) {
+      std::cout << "Receiving in scope 1" << std::endl;
+      callback_received_count++;
+    };
+    sub_foo.AddReceiveCallback(receive_lambda);
+
+    // sleep for 2 seconds, we should receive something
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    EXPECT_TRUE(callback_received_count > 0);
+  }
+
+  // scope 2
+  {
+    size_t callback_received_count(0);
+
+    eCAL::string::CSubscriber<std::string> sub_foo("foo");
+    auto receive_lambda = [&sub_foo, &callback_received_count](const char* /*topic_*/, const std::string& /*msg*/, long long /*time_*/, long long /*clock_*/, long long /*id_*/) {
+      std::cout << "Receiving in scope 2" << std::endl;
+      callback_received_count++;
+    };
+    sub_foo.AddReceiveCallback(receive_lambda);
+
+    // sleep for 2 seconds, we should receive something
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    EXPECT_TRUE(callback_received_count > 0);
+  }
+
+  // stop publishing and join thread
+  stop_publishing = true;
+  pub_foo_t.join();
 
   // finalize eCAL API
   // without destroying any pub / sub

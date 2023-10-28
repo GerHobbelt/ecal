@@ -24,6 +24,7 @@
 #include <ecal/ecal_event.h>
 #include <ecal/ecal_log.h>
 
+#include "ecal_event_internal.h"
 #include "ecal_memfile_header.h"
 #include "ecal_memfile_naming.h"
 #include "ecal_memfile_sync.h"
@@ -65,8 +66,8 @@ namespace eCAL
     if (iter == m_event_handle_map.end())
     {
       SEventHandlePair event_pair;
-      gOpenEvent(&event_pair.event_snd, event_snd_name);
-      gOpenEvent(&event_pair.event_ack, event_ack_name);
+      gOpenNamedEvent(&event_pair.event_snd, event_snd_name, true);
+      gOpenNamedEvent(&event_pair.event_ack, event_ack_name, true);
       m_event_handle_map.insert(std::pair<std::string, SEventHandlePair>(process_id_, event_pair));
       return true;
     }
@@ -77,7 +78,7 @@ namespace eCAL
       // event was deactivated by a sync timeout in SendSyncEvents
       if (!gEventIsValid(iter->second.event_ack))
       {
-        gOpenEvent(&iter->second.event_ack, event_ack_name);
+        gOpenNamedEvent(&iter->second.event_ack, event_ack_name, true);
       }
 
       // Set the ack event to valid again, so we will wait for the subscriber
@@ -251,12 +252,12 @@ namespace eCAL
     // create the memory file
     if (!m_memfile.Create(m_memfile_name.c_str(), true, memfile_size))
     {
-      Logging::Log(log_level_error, std::string(m_base_name + "::CSyncMemoryFile::Create - FAILED : ") + m_memfile_name);
+      Logging::Log(log_level_error, std::string("CSyncMemoryFile::Create FAILED : ") + m_memfile_name);
       return false;
     }
 
 #ifndef NDEBUG
-    Logging::Log(log_level_debug2, std::string(m_base_name + "::CSyncMemoryFile::Create - SUCCESS : ") + m_memfile_name);
+    Logging::Log(log_level_debug2, std::string("CSyncMemoryFile::Create SUCCESS : ") + m_memfile_name);
 #endif
 
     // initialize memory file with empty header
