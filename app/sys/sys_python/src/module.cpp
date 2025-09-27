@@ -599,7 +599,7 @@ PYBIND11_MODULE(ecal_sys_python, Sys) {
         "\n contain environment variables, those variables are expanded."
         "\nArgs:"
         "\n\tparam[out]1 (string): The path to the task's executable, either taken from a runner or from the algo path."
-        "\n\tparam[out]2 (string): The paramters for the executable (a combination from the runner's parameter, the algo path and the task's command line parameters). May be empty."
+        "\n\tparam[out]2 (string): The parameters for the executable (a combination from the runner's parameter, the algo path and the task's command line parameters). May be empty."
         "\n\tparam[out]3 (string): The configured working directory of the task (may be empty)"
         "\n")
       .def("is_config_modified_since_start", &EcalSysTask::IsConfigModifiedSinceStart,
